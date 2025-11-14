@@ -103,6 +103,60 @@
               <el-radio-button label="month">按月</el-radio-button>
               <el-radio-button label="year">按年</el-radio-button>
             </el-radio-group>
+            <!-- 收入账户选择 -->
+            <el-popover
+              placement="bottom"
+              title="选择收入账户"
+              width="300"
+              trigger="click"
+              popper-class="account-popover"
+            >
+              <template #reference>
+                <el-button size="small" type="success" plain style="margin-left: 20px;">
+                  {{ selectedIncomeAccountLabels.length > 0 ? '收入:已选' + selectedIncomeAccountLabels.length + '个' : '选择收入账户' }}
+                </el-button>
+              </template>
+              <el-tree
+                ref="incomeAccountTreeRef"
+                :data="accountTreeData"
+                show-checkbox
+                check-strictly
+                node-key="id"
+                default-expand-all
+                @check="handleIncomeAccountCheck"
+              />
+              <div style="margin-top: 10px; text-align: right;">
+                <el-button size="small" @click="selectAllIncomeAccounts">全选</el-button>
+                <el-button size="small" type="success" @click="confirmIncomeAccountSelection">确定</el-button>
+              </div>
+            </el-popover>
+            <!-- 支出账户选择 -->
+            <el-popover
+              placement="bottom"
+              title="选择支出账户"
+              width="300"
+              trigger="click"
+              popper-class="account-popover"
+            >
+              <template #reference>
+                <el-button size="small" type="danger" plain style="margin-left: 20px;">
+                  {{ selectedExpenseAccountLabels.length > 0 ? '支出:已选' + selectedExpenseAccountLabels.length + '个' : '选择支出账户' }}
+                </el-button>
+              </template>
+              <el-tree
+                ref="expenseAccountTreeRef"
+                :data="accountTreeData"
+                show-checkbox
+                check-strictly
+                node-key="id"
+                default-expand-all
+                @check="handleExpenseAccountCheck"
+              />
+              <div style="margin-top: 10px; text-align: right;">
+                <el-button size="small" @click="selectAllExpenseAccounts">全选</el-button>
+                <el-button size="small" type="danger" @click="confirmExpenseAccountSelection">确定</el-button>
+              </div>
+            </el-popover>
           </div>
         </div>
         <div v-if="timeRange === 'custom'" class="custom-date-picker" style="margin-bottom: 10px;">
@@ -169,6 +223,56 @@ const timeRange = ref('3m') // 默认最近3个月
 const timeScale = ref('month') // 默认按月
 const customDateRange = ref([])
 
+// 账户选择相关
+const incomeAccountTreeRef = ref(null)
+const expenseAccountTreeRef = ref(null)
+const selectedIncomeAccounts = ref([]) // 存储选中的收入账户ID
+const selectedIncomeAccountLabels = ref([]) // 存储选中的收入账户名称
+const selectedExpenseAccounts = ref([]) // 存储选中的支出账户ID
+const selectedExpenseAccountLabels = ref([]) // 存储选中的支出账户名称
+
+// 树状结构账户数据
+const accountTreeData = [
+  {
+    id: 'cash',
+    label: '现金账户',
+    children: [
+      { id: 'cash_main', label: '主要现金' },
+      { id: 'cash_secondary', label: '备用现金' }
+    ]
+  },
+  {
+    id: 'bank',
+    label: '银行卡',
+    children: [
+      {
+        id: 'bank_icbc',
+        label: '工商银行',
+        children: [
+          { id: 'bank_icbc_debit', label: '工商银行借记卡' },
+          { id: 'bank_icbc_credit', label: '工商银行信用卡' }
+        ]
+      },
+      {
+        id: 'bank_ccb',
+        label: '建设银行',
+        children: [
+          { id: 'bank_ccb_debit', label: '建设银行借记卡' }
+        ]
+      }
+    ]
+  },
+  {
+    id: 'digital',
+    label: '数字钱包',
+    children: [
+      { id: 'digital_alipay', label: '支付宝' },
+      { id: 'digital_wechat', label: '微信钱包' },
+      { id: 'digital_paypal', label: 'PayPal' }
+    ]
+  }
+]
+
 // 示例支出分类列表
 const expenseCategories = [
   { label: '餐饮', value: 'food' },
@@ -218,7 +322,85 @@ const resetFilters = () => {
   categoryFilter.value = 'all'
 }
 
-// 根据时间范围和尺度生成模拟数据
+// 处理收入账户选择
+const handleIncomeAccountCheck = () => {
+  // 实时处理逻辑（可选）
+}
+
+// 处理支出账户选择
+const handleExpenseAccountCheck = () => {
+  // 实时处理逻辑（可选）
+}
+
+// 获取所有叶子节点ID的工具函数
+const getAllLeafNodeIds = (nodes, ids = []) => {
+  nodes.forEach(node => {
+    if (node.children && node.children.length > 0) {
+      getAllLeafNodeIds(node.children, ids)
+    } else {
+      ids.push(node.id)
+    }
+  })
+  return ids
+}
+
+// 获取节点标签的工具函数
+const getNodeLabelById = (id, nodes) => {
+  for (const node of nodes) {
+    if (node.id === id) return node.label
+    if (node.children && node.children.length > 0) {
+      const found = getNodeLabelById(id, node.children)
+      if (found) return found
+    }
+  }
+  return null
+}
+
+// 选择所有收入账户
+const selectAllIncomeAccounts = () => {
+  if (incomeAccountTreeRef.value) {
+    const allLeafIds = getAllLeafNodeIds(accountTreeData)
+    incomeAccountTreeRef.value.setCheckedKeys(allLeafIds)
+  }
+}
+
+// 选择所有支出账户
+const selectAllExpenseAccounts = () => {
+  if (expenseAccountTreeRef.value) {
+    const allLeafIds = getAllLeafNodeIds(accountTreeData)
+    expenseAccountTreeRef.value.setCheckedKeys(allLeafIds)
+  }
+}
+
+// 确认收入账户选择
+const confirmIncomeAccountSelection = () => {
+  if (incomeAccountTreeRef.value) {
+    const checkedKeys = incomeAccountTreeRef.value.getCheckedKeys(true) // 只获取叶子节点
+    
+    // 更新选中的收入账户ID和标签
+    selectedIncomeAccounts.value = checkedKeys
+    selectedIncomeAccountLabels.value = checkedKeys.map(id => getNodeLabelById(id, accountTreeData)).filter(Boolean)
+    
+    // 更新图表
+    updateTrendChart()
+  }
+}
+
+// 确认支出账户选择
+const confirmExpenseAccountSelection = () => {
+  if (expenseAccountTreeRef.value) {
+    const checkedKeys = expenseAccountTreeRef.value.getCheckedKeys(true) // 只获取叶子节点
+    
+    // 更新选中的支出账户ID和标签
+    selectedExpenseAccounts.value = checkedKeys
+    selectedExpenseAccountLabels.value = checkedKeys.map(id => getNodeLabelById(id, accountTreeData)).filter(Boolean)
+    
+    // 更新图表
+    updateTrendChart()
+  }
+}
+
+// 根据时间范围、尺度和选定账户生成模拟数据
 const generateTrendData = () => {
   const now = new Date()
   let startDate = new Date()
@@ -257,6 +439,15 @@ const generateTrendData = () => {
     }
   }
   
+  // 分别计算收入和支出账户的权重
+  const incomeAccountWeight = selectedIncomeAccounts.value.length > 0 
+    ? selectedIncomeAccounts.value.length / 8 // 假设总共有8个叶子账户
+    : 1
+  
+  const expenseAccountWeight = selectedExpenseAccounts.value.length > 0 
+    ? selectedExpenseAccounts.value.length / 8
+    : 1
+  
   // 生成标签和数据
   const tempDate = new Date(startDate)
   for (let i = 0; i < dataPoints; i++) {
@@ -278,11 +469,11 @@ const generateTrendData = () => {
       tempDate.setFullYear(tempDate.getFullYear() + 1)
     }
     
-    // 生成随机数据（实际应用中应从后端获取）
-    const baseIncome = 25000
-    const baseExpense = 18500
-    incomeData.push(baseIncome + Math.random() * 5000 - 2500)
-    expenseData.push(baseExpense + Math.random() * 4000 - 2000)
+    // 生成随机数据（实际应用中应从后端获取，并根据账户筛选）
+    const baseIncome = 25000 * incomeAccountWeight
+    const baseExpense = 18500 * expenseAccountWeight
+    incomeData.push(baseIncome + Math.random() * 5000 * incomeAccountWeight - 2500 * incomeAccountWeight)
+    expenseData.push(baseExpense + Math.random() * 4000 * expenseAccountWeight - 2000 * expenseAccountWeight)
   }
   
   return { labels, incomeData, expenseData }
@@ -424,6 +615,14 @@ onMounted(() => {
   threeMonthsAgo.setMonth(now.getMonth() - 3)
   dateRange.value = [threeMonthsAgo, now]
   customDateRange.value = [threeMonthsAgo, now]
+  
+  // 初始化时默认选择所有收入和支出账户
+  setTimeout(() => {
+    selectAllIncomeAccounts()
+    selectAllExpenseAccounts()
+    confirmIncomeAccountSelection()
+    confirmExpenseAccountSelection()
+  }, 100)
   
   initCharts()
   window.addEventListener('resize', handleResize)
@@ -606,6 +805,26 @@ body {
 .chart-controls {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
+  gap: 15px;
+}
+
+.account-popover .el-tree {
+  max-height: 300px;
+  overflow-y: auto;
+  margin-bottom: 10px;
+}
+
+.account-popover .el-tree-node__content {
+  height: auto;
+  padding: 4px 0;
+}
+
+/* 响应式调整 */
+@media (max-width: 1200px) {
+  .chart-controls {
+    justify-content: center;
+  }
 }
 
 .custom-date-picker {
@@ -705,5 +924,11 @@ body {
   .category-select {
     width: 180px;
   }
+}
+
+/* 账户选择器样式 */
+.account-popover .el-tree {
+  max-height: 300px;
+  overflow-y: auto;
 }
 </style>
