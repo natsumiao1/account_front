@@ -83,96 +83,38 @@
       </el-card>
     </div>
 
-    <!-- 图表区域 -->
-    <!-- 收支趋势图表单独一行 -->
-    <div class="trend-chart-container">
+    <!-- 全局浮动的时间选择面板 -->
+    <TimeSelectionPanel 
+      :time-range="timeRange"
+      :time-panel-visible="timePanelVisible"
+      @update-time-range="updateTimeRange"
+      @toggle-panel="toggleTimePanel"
+      @update-trend-chart="updateTrendChart"
+    />
+
+    <!-- 主内容区域 - 图表 -->
+    <div class="main-content">
       <el-card shadow="hover" class="chart-card trend-chart-card">
-        <div class="chart-header">
-          <h3 class="chart-title">收支趋势</h3>
-          <div class="chart-controls">
-            <el-radio-group v-model="timeRange" size="small" @change="updateTrendChart">
-              <el-radio-button label="7d">最近7天</el-radio-button>
-              <el-radio-button label="30d">最近30天</el-radio-button>
-              <el-radio-button label="3m">最近3个月</el-radio-button>
-              <el-radio-button label="1y">最近1年</el-radio-button>
-              <el-radio-button label="custom">自定义</el-radio-button>
-            </el-radio-group>
-            <el-radio-group v-model="timeScale" size="small" @change="updateTrendChart" style="margin-left: 20px;">
-              <el-radio-button label="day">按天</el-radio-button>
-              <el-radio-button label="week">按周</el-radio-button>
-              <el-radio-button label="month">按月</el-radio-button>
-              <el-radio-button label="year">按年</el-radio-button>
-            </el-radio-group>
-            <!-- 收入账户选择 -->
-            <el-popover
-              placement="bottom"
-              title="选择收入账户"
-              width="300"
-              trigger="click"
-              popper-class="account-popover"
-            >
-              <template #reference>
-                <el-button size="small" type="success" plain style="margin-left: 20px;">
-                  {{ selectedIncomeAccountLabels.length > 0 ? '收入:已选' + selectedIncomeAccountLabels.length + '个' : '选择收入账户' }}
-                </el-button>
-              </template>
-              <el-tree
-                ref="incomeAccountTreeRef"
-                :data="accountTreeData"
-                show-checkbox
-                check-strictly
-                node-key="id"
-                default-expand-all
-                @check="handleIncomeAccountCheck"
-              />
-              <div style="margin-top: 10px; text-align: right;">
-                <el-button size="small" @click="selectAllIncomeAccounts">全选</el-button>
-                <el-button size="small" type="success" @click="confirmIncomeAccountSelection">确定</el-button>
-              </div>
-            </el-popover>
-            <!-- 支出账户选择 -->
-            <el-popover
-              placement="bottom"
-              title="选择支出账户"
-              width="300"
-              trigger="click"
-              popper-class="account-popover"
-            >
-              <template #reference>
-                <el-button size="small" type="danger" plain style="margin-left: 20px;">
-                  {{ selectedExpenseAccountLabels.length > 0 ? '支出:已选' + selectedExpenseAccountLabels.length + '个' : '选择支出账户' }}
-                </el-button>
-              </template>
-              <el-tree
-                ref="expenseAccountTreeRef"
-                :data="accountTreeData"
-                show-checkbox
-                check-strictly
-                node-key="id"
-                default-expand-all
-                @check="handleExpenseAccountCheck"
-              />
-              <div style="margin-top: 10px; text-align: right;">
-                <el-button size="small" @click="selectAllExpenseAccounts">全选</el-button>
-                <el-button size="small" type="danger" @click="confirmExpenseAccountSelection">确定</el-button>
-              </div>
-            </el-popover>
-          </div>
-        </div>
-        <div v-if="timeRange === 'custom'" class="custom-date-picker" style="margin-bottom: 10px;">
-          <el-date-picker
-            v-model="customDateRange"
-            type="daterange"
-            range-separator="至"
-            start-placeholder="开始日期"
-            end-placeholder="结束日期"
-            size="small"
-            @change="updateTrendChart"
-          />
-        </div>
+        <h3 class="chart-title">收支趋势</h3>
         <div id="trendChart" ref="trendChartRef" class="chart trend-chart"></div>
       </el-card>
     </div>
+
+    <!-- 全局浮动的账户选择面板 -->
+    <AccountSelectionPanel 
+      :account-panel-visible="accountPanelVisible"
+      :expense-account-tree="expenseAccountTree"
+      :income-account-tree="incomeAccountTree"
+      :expense-account-popover-visible="expenseAccountPopoverVisible"
+      :income-account-popover-visible="incomeAccountPopoverVisible"
+      @toggle-panel="toggleAccountPanel"
+      @update-expense-popover="updateExpensePopover"
+      @update-income-popover="updateIncomePopover"
+      @handle-expense-check="handleExpenseAccountCheckChange"
+      @handle-income-check="handleIncomeAccountCheckChange"
+      @confirm-income-selection="confirmIncomeAccountSelection"
+      @confirm-expense-selection="confirmExpenseAccountSelection"
+    />
     
     <!-- 支出分类图表单独一行 -->
     <div class="category-chart-container">
@@ -209,9 +151,19 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted, defineComponent } from 'vue'
 import * as echarts from 'echarts'
-import { TrendCharts, ShoppingBag, Wallet, Document } from '@element-plus/icons-vue'
+import { TrendCharts, ShoppingBag, Wallet, Document, ArrowLeft, ArrowRight } from '@element-plus/icons-vue'
+import TimeSelectionPanel from './components/TimeSelectionPanel.vue'
+import AccountSelectionPanel from './components/AccountSelectionPanel.vue'
+
+// 面板显示控制变量
+const timePanelVisible = ref(true)
+const accountPanelVisible = ref(true)
+
+// 弹窗控制变量
+const expenseAccountPopoverVisible = ref(false)
+const incomeAccountPopoverVisible = ref(false)
 
 // 筛选相关数据
 const dateRange = ref([])
@@ -223,55 +175,227 @@ const timeRange = ref('3m') // 默认最近3个月
 const timeScale = ref('month') // 默认按月
 const customDateRange = ref([])
 
-// 账户选择相关
-const incomeAccountTreeRef = ref(null)
-const expenseAccountTreeRef = ref(null)
+// 账户选择相关变量
 const selectedIncomeAccounts = ref([]) // 存储选中的收入账户ID
 const selectedIncomeAccountLabels = ref([]) // 存储选中的收入账户名称
 const selectedExpenseAccounts = ref([]) // 存储选中的支出账户ID
 const selectedExpenseAccountLabels = ref([]) // 存储选中的支出账户名称
 
-// 树状结构账户数据
-const accountTreeData = [
-  {
-    id: 'cash',
-    label: '现金账户',
-    children: [
-      { id: 'cash_main', label: '主要现金' },
-      { id: 'cash_secondary', label: '备用现金' }
-    ]
-  },
-  {
-    id: 'bank',
-    label: '银行卡',
-    children: [
-      {
-        id: 'bank_icbc',
-        label: '工商银行',
-        children: [
-          { id: 'bank_icbc_debit', label: '工商银行借记卡' },
-          { id: 'bank_icbc_credit', label: '工商银行信用卡' }
-        ]
-      },
-      {
-        id: 'bank_ccb',
-        label: '建设银行',
-        children: [
-          { id: 'bank_ccb_debit', label: '建设银行借记卡' }
-        ]
+// 树状结构账户数据 - 改为响应式引用
+const incomeAccountTree = ref([])
+const expenseAccountTree = ref([])
+
+// 从后端API获取账户树数据
+const fetchAccountTree = async () => {
+  // 先设置默认的模拟数据，确保UI立即有内容显示
+  setDefaultAccountData()
+  
+  // 使用相对路径，让请求通过Vite代理转发
+  const fullApiUrl = '/api/account/tree'
+  
+  try {
+    // 添加超时处理
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 5000)
+    
+    console.log(`尝试连接后端API: ${fullApiUrl}`)
+    
+    const response = await fetch(fullApiUrl, {
+      method: 'GET',
+      // 移除Content-Type，因为这是GET请求且没有请求体
+      // headers: {
+      //   'Content-Type': 'application/json'
+      // },
+      signal: controller.signal
+    })
+    
+    clearTimeout(timeoutId)
+    
+    if (!response.ok) {
+      console.warn(`API返回非成功状态码: ${response.status} ${response.statusText}`)
+      console.warn(`提示: 请确保后端服务运行在 ${apiBaseUrl} 并且 ${apiEndpoint} 接口可用`)
+      // 保持使用默认数据
+      return
+    }
+    
+    const accountData = await response.json()
+    
+    console.log('从后端获取到的原始账户数据:', accountData)
+    
+    // 转换数据结构，将API返回的AccountTreeDTO格式转换为Element Plus树组件需要的格式
+    // 递归转换子节点结构
+    const transformNode = (node) => {
+      return {
+        id: node.guid || node.id,
+        label: node.name || node.label,
+        children: node.children && node.children.length > 0 
+          ? node.children.map(transformNode)
+          : []
       }
-    ]
-  },
-  {
-    id: 'digital',
-    label: '数字钱包',
-    children: [
-      { id: 'digital_alipay', label: '支付宝' },
-      { id: 'digital_wechat', label: '微信钱包' },
-      { id: 'digital_paypal', label: 'PayPal' }
-    ]
+    }
+    
+    // 初始化收入和支出账户数组
+    const incomeAccounts = []
+    const expenseAccounts = []
+    
+    // 确保accountData是数组
+    if (Array.isArray(accountData)) {
+      // 增强的账户分类函数
+      const classifyAccount = (account) => {
+        // 转换节点格式
+        const transformNode = (node) => {
+          return {
+            id: node.guid || node.id || node.accountId || node.code || Math.random().toString(36).substr(2, 9),
+            label: node.name || node.label || node.accountName || '未命名账户',
+            children: node.children && node.children.length > 0 
+              ? node.children.map(child => transformNode(child)) 
+              : []
+          }
+        }
+        
+        const transformedNode = transformNode(account)
+        
+        // 更全面的账户分类逻辑
+        // 1. 优先使用accountType字段
+        const accountType = (account.accountType || '').toLowerCase()
+        
+        if (accountType === 'income' || accountType === '1' || accountType.includes('收入')) {
+          return { type: 'income', node: transformedNode }
+        } else if (accountType === 'expense' || accountType === '2' || accountType.includes('支出')) {
+          return { type: 'expense', node: transformedNode }
+        }
+        
+        // 2. 使用账户名称中的关键字
+        const accountName = (account.name || '').toLowerCase()
+        if (accountName.includes('收入') || accountName.includes('salary') || accountName.includes('income') || accountName.includes('收益')) {
+          return { type: 'income', node: transformedNode }
+        } else if (accountName.includes('支出') || accountName.includes('expense') || accountName.includes('cash') || accountName.includes('银行') || accountName.includes('bank')) {
+          return { type: 'expense', node: transformedNode }
+        }
+        
+        // 3. 使用账户代码或ID的前缀/后缀
+        const accountId = (account.id || account.accountId || account.code || '').toString()
+        if (accountId.startsWith('1') || accountId.startsWith('I') || accountId.endsWith('IN')) {
+          return { type: 'income', node: transformedNode }
+        } else if (accountId.startsWith('2') || accountId.startsWith('E') || accountId.endsWith('EX')) {
+          return { type: 'expense', node: transformedNode }
+        }
+        
+        // 4. 默认分类为支出账户，除非明确标识为收入
+        return { type: 'expense', node: transformedNode }
+      }
+      
+      // 处理每个账户
+      accountData.forEach(account => {
+        const { type, node } = classifyAccount(account)
+        if (type === 'income') {
+          incomeAccounts.push(node)
+        } else {
+          expenseAccounts.push(node)
+        }
+      })
+      
+      // 确保所有获取到的账户都被使用
+      // 如果有数据，则完全替换默认数据，不再混合使用
+      if (incomeAccounts.length > 0) {
+        incomeAccountTree.value = incomeAccounts
+        console.log('已更新收入账户数据，共', incomeAccounts.length, '个账户组')
+      } else {
+        console.log('未识别到收入账户，保留默认数据')
+      }
+      
+      if (expenseAccounts.length > 0) {
+        expenseAccountTree.value = expenseAccounts
+        console.log('已更新支出账户数据，共', expenseAccounts.length, '个账户组')
+      } else {
+        console.log('未识别到支出账户，保留默认数据')
+      }
+      
+      // 如果仍然没有数据，尝试直接使用转换后的所有节点
+      if (incomeAccountTree.value.length === 0 && expenseAccountTree.value.length === 0 && allTransformedNodes.length > 0) {
+        console.log('使用所有转换后的节点作为支出账户')
+        expenseAccountTree.value = allTransformedNodes
+      }
+    }
+  } catch (error) {
+    if (error.name === 'AbortError') {
+      console.warn('获取账户数据超时，使用默认数据')
+      console.info('提示: 后端API响应时间超过5秒，请检查后端服务是否正常运行')
+    } else if (error.message.includes('Failed to fetch')) {
+      console.warn(`获取账户树数据失败: 无法连接到API ${fullApiUrl}`)
+      console.info('提示: 请检查以下几点:\n1. 后端服务是否已启动\n2. 后端服务是否运行在正确的端口(8080)\n3. 网络连接是否正常\n4. 是否存在CORS限制')
+    } else {
+      console.warn('获取账户树数据失败，使用默认数据:', error.message)
+    }
+    // 已经在函数开始时设置了默认数据，这里不需要重复设置
+    // 提示用户当前使用的是模拟数据
+    console.info('应用当前使用的是模拟账户数据，可以正常使用大部分功能')
   }
-]
+}
+
+// 设置默认账户数据的函数
+const setDefaultAccountData = () => {
+  incomeAccountTree.value = [
+    {
+      id: 'income_salary',
+      label: '工资收入',
+      children: [
+        { id: 'income_salary_basic', label: '基本工资' },
+        { id: 'income_salary_bonus', label: '奖金' }
+      ]
+    },
+    {
+      id: 'income_investment',
+      label: '投资收益',
+      children: [
+        { id: 'income_investment_stock', label: '股票收益' },
+        { id: 'income_investment_fund', label: '基金收益' }
+      ]
+    }
+  ]
+  expenseAccountTree.value = [
+    {
+      id: 'cash',
+      label: '现金账户',
+      children: [
+        { id: 'cash_main', label: '主要现金' },
+        { id: 'cash_secondary', label: '备用现金' }
+      ]
+    },
+    {
+      id: 'bank',
+      label: '银行卡',
+      children: [
+        {
+          id: 'bank_icbc',
+          label: '工商银行',
+          children: [
+            { id: 'bank_icbc_debit', label: '工商银行借记卡' },
+            { id: 'bank_icbc_credit', label: '工商银行信用卡' }
+          ]
+        },
+        {
+          id: 'bank_ccb',
+          label: '建设银行',
+          children: [
+            { id: 'bank_ccb_debit', label: '建设银行借记卡' }
+          ]
+        }
+      ]
+    },
+    {
+      id: 'digital',
+      label: '数字钱包',
+      children: [
+        { id: 'digital_alipay', label: '支付宝' },
+        { id: 'digital_wechat', label: '微信钱包' },
+        { id: 'digital_paypal', label: 'PayPal' }
+      ]
+    }
+  ]
+}
+
+// 账户选择相关 - 移除组件引用，因为现在全选功能在AccountSelectionPanel内部实现
 
 // 示例支出分类列表
 const expenseCategories = [
@@ -309,6 +433,16 @@ const categoryChartRef = ref(null)
 let trendChart = null
 let categoryChart = null
 
+// 组件挂载时获取账户数据
+onMounted(() => {
+  // 首先设置默认账户数据，确保UI立即显示
+  setDefaultAccountData()
+  // 然后尝试从API获取真实数据
+  fetchAccountTree()
+  
+  // 初始化图表等其他逻辑...
+})
+
 // 筛选函数
 const applyFilters = () => {
   // TODO: 实现筛选逻辑
@@ -322,6 +456,33 @@ const resetFilters = () => {
   categoryFilter.value = 'all'
 }
 
+// 切换时间面板显示/隐藏
+const toggleTimePanel = () => {
+  timePanelVisible.value = !timePanelVisible.value
+}
+
+// 切换账户面板显示/隐藏
+const toggleAccountPanel = () => {
+  accountPanelVisible.value = !accountPanelVisible.value
+}
+
+// 更新时间范围
+const updateTimeRange = (newRange) => {
+  timeRange.value = newRange
+}
+
+// 更新支出账户弹窗状态
+const updateExpensePopover = (visible) => {
+  expenseAccountPopoverVisible.value = visible
+}
+
+// 更新收入账户弹窗状态
+const updateIncomePopover = (visible) => {
+  incomeAccountPopoverVisible.value = visible
+}
+
+// 弹窗状态控制变量已在文件开头声明
+
 // 处理收入账户选择
 const handleIncomeAccountCheck = () => {
   // 实时处理逻辑（可选）
@@ -331,6 +492,20 @@ const handleIncomeAccountCheck = () => {
 const handleExpenseAccountCheck = () => {
   // 实时处理逻辑（可选）
 }
+
+// 处理收入账户选择变化
+const handleIncomeAccountCheckChange = (data, checked, indeterminate) => {
+  // 处理收入账户选择变化逻辑
+  console.log('收入账户选择变化:', data, checked, indeterminate)
+}
+
+// 处理支出账户选择变化
+const handleExpenseAccountCheckChange = (data, checked, indeterminate) => {
+  // 处理支出账户选择变化逻辑
+  console.log('支出账户选择变化:', data, checked, indeterminate)
+}
+
+// 函数已在前面定义
 
 // 获取所有叶子节点ID的工具函数
 const getAllLeafNodeIds = (nodes, ids = []) => {
@@ -356,48 +531,46 @@ const getNodeLabelById = (id, nodes) => {
   return null
 }
 
-// 选择所有收入账户
-const selectAllIncomeAccounts = () => {
-  if (incomeAccountTreeRef.value) {
-    const allLeafIds = getAllLeafNodeIds(accountTreeData)
-    incomeAccountTreeRef.value.setCheckedKeys(allLeafIds)
-  }
-}
+// 这些函数已在文件前面部分声明
 
-// 选择所有支出账户
-const selectAllExpenseAccounts = () => {
-  if (expenseAccountTreeRef.value) {
-    const allLeafIds = getAllLeafNodeIds(accountTreeData)
-    expenseAccountTreeRef.value.setCheckedKeys(allLeafIds)
-  }
-}
+// 全选功能已在AccountSelectionPanel组件内部实现
 
 // 确认收入账户选择
-const confirmIncomeAccountSelection = () => {
-  if (incomeAccountTreeRef.value) {
-    const checkedKeys = incomeAccountTreeRef.value.getCheckedKeys(true) // 只获取叶子节点
-    
-    // 更新选中的收入账户ID和标签
+const confirmIncomeAccountSelection = (checkedKeys) => {
+  console.log('确认收入账户选择，选中的账户ID:', checkedKeys)
+  
+  // 更新选中的收入账户ID和标签
+  if (checkedKeys && checkedKeys.length > 0) {
     selectedIncomeAccounts.value = checkedKeys
-    selectedIncomeAccountLabels.value = checkedKeys.map(id => getNodeLabelById(id, accountTreeData)).filter(Boolean)
-    
-    // 更新图表
-    updateTrendChart()
+    selectedIncomeAccountLabels.value = checkedKeys.map(id => getNodeLabelById(id, incomeAccountTree.value)).filter(Boolean)
+  } else if (incomeAccountTree.value.length > 0) {
+    // 如果没有传递选中的账户，使用默认的选中所有
+    const allLeafIds = getAllLeafNodeIds(incomeAccountTree.value)
+    selectedIncomeAccounts.value = allLeafIds
+    selectedIncomeAccountLabels.value = allLeafIds.map(id => getNodeLabelById(id, incomeAccountTree.value)).filter(Boolean)
   }
+  
+  // 更新图表
+  updateTrendChart()
 }
 
 // 确认支出账户选择
-const confirmExpenseAccountSelection = () => {
-  if (expenseAccountTreeRef.value) {
-    const checkedKeys = expenseAccountTreeRef.value.getCheckedKeys(true) // 只获取叶子节点
-    
-    // 更新选中的支出账户ID和标签
+const confirmExpenseAccountSelection = (checkedKeys) => {
+  console.log('确认支出账户选择，选中的账户ID:', checkedKeys)
+  
+  // 更新选中的支出账户ID和标签
+  if (checkedKeys && checkedKeys.length > 0) {
     selectedExpenseAccounts.value = checkedKeys
-    selectedExpenseAccountLabels.value = checkedKeys.map(id => getNodeLabelById(id, accountTreeData)).filter(Boolean)
-    
-    // 更新图表
-    updateTrendChart()
+    selectedExpenseAccountLabels.value = checkedKeys.map(id => getNodeLabelById(id, expenseAccountTree.value)).filter(Boolean)
+  } else if (expenseAccountTree.value.length > 0) {
+    // 如果没有传递选中的账户，使用默认的选中所有
+    const allLeafIds = getAllLeafNodeIds(expenseAccountTree.value)
+    selectedExpenseAccounts.value = allLeafIds
+    selectedExpenseAccountLabels.value = allLeafIds.map(id => getNodeLabelById(id, expenseAccountTree.value)).filter(Boolean)
   }
+  
+  // 更新图表
+  updateTrendChart()
 }
 
 // 根据时间范围、尺度和选定账户生成模拟数据
@@ -618,10 +791,9 @@ onMounted(() => {
   
   // 初始化时默认选择所有收入和支出账户
   setTimeout(() => {
-    selectAllIncomeAccounts()
-    selectAllExpenseAccounts()
-    confirmIncomeAccountSelection()
-    confirmExpenseAccountSelection()
+    // 移除对已删除函数的引用，直接调用确认函数
+    confirmIncomeAccountSelection(null)
+    confirmExpenseAccountSelection(null)
   }, 100)
   
   initCharts()
@@ -766,89 +938,378 @@ body {
 }
 
 /* 图表区域样式 */
-.trend-chart-container,
 .category-chart-container {
   margin-bottom: 20px;
 }
 
-.trend-chart {
-  height: 450px; /* 收支趋势图表更高 */
+/* 主内容区域 */
+  main {
+    padding: 20px;
+    margin: 0 auto;
+    max-width: calc(100% - 600px);
+  }
+
+  /* 全局浮动面板样式 */
+  .floating-panel {
+    position: fixed;
+    z-index: 1000;
+    background-color: white;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    border-radius: 8px;
+    padding: 15px;
+    margin: 20px;
+    max-height: calc(100vh - 40px);
+    overflow-y: auto;
+    transition: transform 0.3s ease;
+  }
+
+  /* 时间选择面板 - 左侧垂直居中 */
+  .floating-panel.left {
+    top: 50%;
+    left: 0;
+    transform: translateY(-50%);
+    min-width: min-content;
+    max-width: 240px;
+  }
+
+  /* 账户选择面板 - 右侧垂直居中 */
+  .floating-panel.right {
+    top: 50%;
+    right: 0;
+    transform: translateY(-50%);
+    min-width: min-content;
+    max-width: 240px;
+  }
+
+  .control-panel {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+  }
+
+/* 面板头部样式 */
+  .panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+  }
+
+  /* 面板标题样式 */
+  .panel-title {
+    font-size: 18px;
+    font-weight: bold;
+    color: #303133;
+    flex: 1;
+    text-align: center;
+    margin: 0;
+  }
+
+  /* 折叠按钮样式 */
+.collapse-btn {
+  padding: 4px;
+  min-width: unset;
 }
 
-.category-chart {
-  height: 400px; /* 支出分类图表高度保持适中 */
+/* 折叠状态样式 */
+  .floating-panel.collapsed {
+  width: 40px;
+  padding: 8px;
 }
+.floating-panel.collapsed .panel-header {
+  justify-content: center;
+}
+.floating-panel.collapsed .panel-title {
+  display: none;
+}
+
+  /* 时间面板标题居中（左侧按钮） */
+  .time-panel .panel-header {
+    justify-content: flex-end;
+  }
+
+  .time-panel .panel-title {
+    margin-right: auto;
+  }
+
+  /* 账户面板标题居中（右侧按钮） */
+  .account-panel .panel-header {
+    justify-content: flex-start;
+  }
+
+  .account-panel .panel-title {
+    margin-left: auto;
+  }
+
+  /* 折叠按钮样式 */
+  .collapse-btn {
+    transition: transform 0.3s ease;
+    font-size: 16px;
+    padding: 4px;
+    cursor: pointer;
+  }
+
+  .collapse-btn.collapsed {
+    transform: rotate(180deg);
+  }
+
+  /* 折叠动画 */
+  .slide-enter-active,
+  .slide-leave-active {
+    transition: all 0.3s ease;
+    overflow: hidden;
+  }
+
+  .slide-enter-from,
+  .slide-leave-to {
+    max-height: 0;
+    opacity: 0;
+    transform: translateX(20px);
+  }
+
+  /* 确保展开时内容正常显示 */
+  .slide-enter-to,
+  .slide-leave-from {
+    max-height: 500px;
+    opacity: 1;
+    transform: translateX(0);
+  }
+
+  /* 时间面板的展开收起动画方向 */
+  .time-panel .slide-enter-from,
+  .time-panel .slide-leave-to {
+    transform: translateX(-20px);
+  }
 
 .chart-card {
   transition: transform 0.2s;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
 }
 
 .chart-card:hover {
   transform: translateY(-2px);
 }
 
-.chart-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 15px;
-}
-
 .chart-title {
-  font-size: 18px;
-  font-weight: 500;
+  font-size: 20px;
+  font-weight: bold;
   color: #303133;
-  margin: 0;
-  text-align: left;
+  margin: 0 0 20px 0;
+  text-align: center;
 }
 
-.chart-controls {
+.trend-chart {
+  height: 400px;
+  flex: 1;
+  min-height: 0;
+}
+
+.category-chart {
+  height: 400px; /* 支出分类图表高度保持适中 */
+}
+
+/* 时间选择控件样式优化 - 垂直排列 */
+.time-controls-group {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    width: fit-content;
+  }
+
+.control-label {
+  font-size: 14px;
+  font-weight: 500;
+  color: #606266;
+  margin-bottom: 8px;
+  display: block;
+  text-align: center;
+}
+
+/* 单选按钮组容器 */
+.radio-controls {
+  width: 100%;
   display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 15px;
+  flex-direction: column;
+  gap: 5px;
+}
+
+/* 垂直排列的单选按钮组 */
+.vertical-radio-group {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.vertical-radio-group .el-radio-button {
+  display: block;
+  width: 100%;
+  text-align: center;
+  /* 重置按钮组的默认样式 */
+  position: relative;
+}
+
+.vertical-radio-group .el-radio-button__inner {
+  width: 100%;
+  text-align: center;
+  border-radius: 4px !important;
+}
+
+/* 覆盖Element UI的默认样式，确保垂直排列时按钮样式一致 */
+.vertical-radio-group .el-radio-button:first-child .el-radio-button__inner,
+.vertical-radio-group .el-radio-button.is-active:first-child .el-radio-button__inner {
+  border-radius: 4px !important;
+}
+
+.vertical-radio-group .el-radio-button:last-child .el-radio-button__inner,
+.vertical-radio-group .el-radio-button.is-active:last-child .el-radio-button__inner {
+  border-radius: 4px !important;
+}
+
+/* 移除按钮之间的连接边框，让每个按钮都有独立完整的边框 */
+.vertical-radio-group .el-radio-button__orig-radio:checked + .el-radio-button__inner {
+  z-index: 1;
+}
+
+/* 自定义日期悬浮弹出框样式 */
+.custom-date-popover {
+  z-index: 2000 !important;
+  padding: 10px;
+  background: white;
+  border-radius: 4px;
+  box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
+}
+
+.custom-date-popover .el-picker-panel {
+  box-shadow: none !important;
+  border: none !important;
+}
+
+/* 垂直排列的单选按钮组 */
+.el-radio-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
+
+.el-radio-button {
+  display: block;
+  width: 100%;
+  margin-bottom: 5px;
+}
+
+.el-radio-button:last-child {
+  margin-bottom: 0;
+}
+
+/* 自定义日期选择器垂直排列 */
+.custom-date-picker {
+  margin-bottom: 10px;
+  width: 100%;
+}
+
+.custom-date-picker .el-date-editor {
+  width: 100%;
+}
+
+/* 垂直排列的账户选择 */
+.account-group {
+    margin-bottom: 25px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    width: fit-content;
+  }
+
+.account-group:last-child {
+  margin-bottom: 0;
+}
+
+.account-popover {
+  width: 300px;
 }
 
 .account-popover .el-tree {
   max-height: 300px;
   overflow-y: auto;
-  margin-bottom: 10px;
 }
 
 .account-popover .el-tree-node__content {
   height: auto;
-  padding: 4px 0;
+  padding: 8px 0;
 }
 
-/* 响应式调整 */
-@media (max-width: 1200px) {
-  .chart-controls {
-    justify-content: center;
-  }
+.account-buttons {
+  margin-top: 10px;
+  display: flex;
+  justify-content: space-between;
+}
+
+/* 收入账户按钮样式 */
+.income-account-btn {
+  background-color: #67c23a;
+  border-color: #67c23a;
+  color: white;
+  width: 100%;
+}
+
+.income-account-btn:hover {
+  background-color: #85ce61;
+  border-color: #85ce61;
+}
+
+/* 支出账户按钮样式 */
+.expense-account-btn {
+  background-color: #f56c6c;
+  border-color: #f56c6c;
+  color: white;
+  width: 100%;
+}
+
+.expense-account-btn:hover {
+  background-color: #f78989;
+  border-color: #f78989;
 }
 
 .custom-date-picker {
   margin-bottom: 10px;
-  text-align: right;
 }
 
 /* 响应式调整 */
-@media (max-width: 1024px) {
-  .chart-header {
-    flex-direction: column;
-    align-items: flex-start;
+@media (max-width: 1200px) {
+  .time-panel,
+  .account-panel {
+    max-width: 200px;
+    width: fit-content;
+  }
+}
+
+@media (max-width: 992px) {
+  /* 响应式设计 */
+  .floating-panel {
+    position: static;
+    margin: 10px 0;
+    width: 100%;
+    max-width: 100%;
+  }
+
+  /* 在小屏幕上重置转换 */
+  .time-panel,
+  .account-panel {
+    transform: none;
+    top: auto;
+    left: auto;
+    right: auto;
+  }
+
+  .main-content {
+    padding: 10px;
   }
   
-  .chart-controls {
-    flex-wrap: wrap;
-    margin-top: 10px;
-    width: 100%;
-  }
-  
-  .chart-controls .el-radio-group {
-    margin-bottom: 10px;
-    margin-left: 0 !important;
-    width: 100%;
+  .trend-chart {
+    height: 350px;
   }
 }
 
