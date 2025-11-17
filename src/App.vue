@@ -167,6 +167,8 @@ const incomeAccountPopoverVisible = ref(false)
 
 // 筛选相关数据
 const dateRange = ref([])
+import { accountApi } from './utils/api'
+
 const transactionTypeFilter = ref('all')
 const categoryFilter = ref('all')
 
@@ -187,215 +189,16 @@ const expenseAccountTree = ref([])
 
 // 从后端API获取账户树数据
 const fetchAccountTree = async () => {
-  // 先设置默认的模拟数据，确保UI立即有内容显示
-  setDefaultAccountData()
-  
-  // 使用相对路径，让请求通过Vite代理转发
-  const fullApiUrl = '/api/account/tree'
-  
   try {
-    // 添加超时处理
-    const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 5000)
-    
-    console.log(`尝试连接后端API: ${fullApiUrl}`)
-    
-    const response = await fetch(fullApiUrl, {
-      method: 'GET',
-      // 移除Content-Type，因为这是GET请求且没有请求体
-      // headers: {
-      //   'Content-Type': 'application/json'
-      // },
-      signal: controller.signal
-    })
-    
-    clearTimeout(timeoutId)
-    
-    if (!response.ok) {
-      console.warn(`API返回非成功状态码: ${response.status} ${response.statusText}`)
-      console.warn(`提示: 请确保后端服务运行在 ${apiBaseUrl} 并且 ${apiEndpoint} 接口可用`)
-      // 保持使用默认数据
-      return
-    }
-    
-    const accountData = await response.json()
-    
-    console.log('从后端获取到的原始账户数据:', accountData)
-    
-    // 转换数据结构，将API返回的AccountTreeDTO格式转换为Element Plus树组件需要的格式
-    // 递归转换子节点结构
-    const transformNode = (node) => {
-      return {
-        id: node.guid || node.id,
-        label: node.name || node.label,
-        children: node.children && node.children.length > 0 
-          ? node.children.map(transformNode)
-          : []
-      }
-    }
-    
-    // 初始化收入和支出账户数组
-    const incomeAccounts = []
-    const expenseAccounts = []
-    
-    // 确保accountData是数组
-    if (Array.isArray(accountData)) {
-      // 增强的账户分类函数
-      const classifyAccount = (account) => {
-        // 转换节点格式
-        const transformNode = (node) => {
-          return {
-            id: node.guid || node.id || node.accountId || node.code || Math.random().toString(36).substr(2, 9),
-            label: node.name || node.label || node.accountName || '未命名账户',
-            children: node.children && node.children.length > 0 
-              ? node.children.map(child => transformNode(child)) 
-              : []
-          }
-        }
-        
-        const transformedNode = transformNode(account)
-        
-        // 更全面的账户分类逻辑
-        // 1. 优先使用accountType字段
-        const accountType = (account.accountType || '').toLowerCase()
-        
-        if (accountType === 'income' || accountType === '1' || accountType.includes('收入')) {
-          return { type: 'income', node: transformedNode }
-        } else if (accountType === 'expense' || accountType === '2' || accountType.includes('支出')) {
-          return { type: 'expense', node: transformedNode }
-        }
-        
-        // 2. 使用账户名称中的关键字
-        const accountName = (account.name || '').toLowerCase()
-        if (accountName.includes('收入') || accountName.includes('salary') || accountName.includes('income') || accountName.includes('收益')) {
-          return { type: 'income', node: transformedNode }
-        } else if (accountName.includes('支出') || accountName.includes('expense') || accountName.includes('cash') || accountName.includes('银行') || accountName.includes('bank')) {
-          return { type: 'expense', node: transformedNode }
-        }
-        
-        // 3. 使用账户代码或ID的前缀/后缀
-        const accountId = (account.id || account.accountId || account.code || '').toString()
-        if (accountId.startsWith('1') || accountId.startsWith('I') || accountId.endsWith('IN')) {
-          return { type: 'income', node: transformedNode }
-        } else if (accountId.startsWith('2') || accountId.startsWith('E') || accountId.endsWith('EX')) {
-          return { type: 'expense', node: transformedNode }
-        }
-        
-        // 4. 默认分类为支出账户，除非明确标识为收入
-        return { type: 'expense', node: transformedNode }
-      }
-      
-      // 处理每个账户
-      accountData.forEach(account => {
-        const { type, node } = classifyAccount(account)
-        if (type === 'income') {
-          incomeAccounts.push(node)
-        } else {
-          expenseAccounts.push(node)
-        }
-      })
-      
-      // 确保所有获取到的账户都被使用
-      // 如果有数据，则完全替换默认数据，不再混合使用
-      if (incomeAccounts.length > 0) {
-        incomeAccountTree.value = incomeAccounts
-        console.log('已更新收入账户数据，共', incomeAccounts.length, '个账户组')
-      } else {
-        console.log('未识别到收入账户，保留默认数据')
-      }
-      
-      if (expenseAccounts.length > 0) {
-        expenseAccountTree.value = expenseAccounts
-        console.log('已更新支出账户数据，共', expenseAccounts.length, '个账户组')
-      } else {
-        console.log('未识别到支出账户，保留默认数据')
-      }
-      
-      // 如果仍然没有数据，尝试直接使用转换后的所有节点
-      if (incomeAccountTree.value.length === 0 && expenseAccountTree.value.length === 0 && allTransformedNodes.length > 0) {
-        console.log('使用所有转换后的节点作为支出账户')
-        expenseAccountTree.value = allTransformedNodes
-      }
-    }
+    const result = await accountApi.fetchAccountTree()
+    incomeAccountTree.value = result.allAccounts
+    expenseAccountTree.value = result.allAccounts
   } catch (error) {
-    if (error.name === 'AbortError') {
-      console.warn('获取账户数据超时，使用默认数据')
-      console.info('提示: 后端API响应时间超过5秒，请检查后端服务是否正常运行')
-    } else if (error.message.includes('Failed to fetch')) {
-      console.warn(`获取账户树数据失败: 无法连接到API ${fullApiUrl}`)
-      console.info('提示: 请检查以下几点:\n1. 后端服务是否已启动\n2. 后端服务是否运行在正确的端口(8080)\n3. 网络连接是否正常\n4. 是否存在CORS限制')
-    } else {
-      console.warn('获取账户树数据失败，使用默认数据:', error.message)
-    }
-    // 已经在函数开始时设置了默认数据，这里不需要重复设置
-    // 提示用户当前使用的是模拟数据
-    console.info('应用当前使用的是模拟账户数据，可以正常使用大部分功能')
+    console.warn('获取账户树数据失败', error.message)
   }
+
 }
 
-// 设置默认账户数据的函数
-const setDefaultAccountData = () => {
-  incomeAccountTree.value = [
-    {
-      id: 'income_salary',
-      label: '工资收入',
-      children: [
-        { id: 'income_salary_basic', label: '基本工资' },
-        { id: 'income_salary_bonus', label: '奖金' }
-      ]
-    },
-    {
-      id: 'income_investment',
-      label: '投资收益',
-      children: [
-        { id: 'income_investment_stock', label: '股票收益' },
-        { id: 'income_investment_fund', label: '基金收益' }
-      ]
-    }
-  ]
-  expenseAccountTree.value = [
-    {
-      id: 'cash',
-      label: '现金账户',
-      children: [
-        { id: 'cash_main', label: '主要现金' },
-        { id: 'cash_secondary', label: '备用现金' }
-      ]
-    },
-    {
-      id: 'bank',
-      label: '银行卡',
-      children: [
-        {
-          id: 'bank_icbc',
-          label: '工商银行',
-          children: [
-            { id: 'bank_icbc_debit', label: '工商银行借记卡' },
-            { id: 'bank_icbc_credit', label: '工商银行信用卡' }
-          ]
-        },
-        {
-          id: 'bank_ccb',
-          label: '建设银行',
-          children: [
-            { id: 'bank_ccb_debit', label: '建设银行借记卡' }
-          ]
-        }
-      ]
-    },
-    {
-      id: 'digital',
-      label: '数字钱包',
-      children: [
-        { id: 'digital_alipay', label: '支付宝' },
-        { id: 'digital_wechat', label: '微信钱包' },
-        { id: 'digital_paypal', label: 'PayPal' }
-      ]
-    }
-  ]
-}
-
-// 账户选择相关 - 移除组件引用，因为现在全选功能在AccountSelectionPanel内部实现
 
 // 示例支出分类列表
 const expenseCategories = [
@@ -435,13 +238,8 @@ let categoryChart = null
 
 // 组件挂载时获取账户数据
 onMounted(() => {
-  // 首先设置默认账户数据，确保UI立即显示
-  setDefaultAccountData()
-  // 然后尝试从API获取真实数据
   fetchAccountTree()
-  
-  // 初始化图表等其他逻辑...
-})
+  })
 
 // 筛选函数
 const applyFilters = () => {
@@ -537,40 +335,62 @@ const getNodeLabelById = (id, nodes) => {
 
 // 确认收入账户选择
 const confirmIncomeAccountSelection = (checkedKeys) => {
-  console.log('确认收入账户选择，选中的账户ID:', checkedKeys)
+  console.log('===== 确认收入账户选择 =====')
+  console.log('传入的选中账户ID:', checkedKeys)
   
   // 更新选中的收入账户ID和标签
   if (checkedKeys && checkedKeys.length > 0) {
     selectedIncomeAccounts.value = checkedKeys
-    selectedIncomeAccountLabels.value = checkedKeys.map(id => getNodeLabelById(id, incomeAccountTree.value)).filter(Boolean)
+    selectedIncomeAccountLabels.value = checkedKeys.map(id => {
+      const label = getNodeLabelById(id, incomeAccountTree.value)
+      console.log(`收入账户ID: ${id} 对应标签: ${label}`)
+      return label
+    }).filter(Boolean)
+    
+    console.log(`更新后选中的收入账户数量: ${selectedIncomeAccounts.value.length}`)
+    console.log(`更新后选中的收入账户标签: ${selectedIncomeAccountLabels.value.join(', ')}`)
   } else if (incomeAccountTree.value.length > 0) {
     // 如果没有传递选中的账户，使用默认的选中所有
     const allLeafIds = getAllLeafNodeIds(incomeAccountTree.value)
     selectedIncomeAccounts.value = allLeafIds
     selectedIncomeAccountLabels.value = allLeafIds.map(id => getNodeLabelById(id, incomeAccountTree.value)).filter(Boolean)
+    
+    console.log(`使用默认全选: ${allLeafIds.length}个收入账户叶子节点`)
   }
   
   // 更新图表
   updateTrendChart()
+  console.log('===== 收入账户选择确认完成 =====')
 }
 
 // 确认支出账户选择
 const confirmExpenseAccountSelection = (checkedKeys) => {
-  console.log('确认支出账户选择，选中的账户ID:', checkedKeys)
+  console.log('===== 确认支出账户选择 =====')
+  console.log('传入的选中账户ID:', checkedKeys)
   
   // 更新选中的支出账户ID和标签
   if (checkedKeys && checkedKeys.length > 0) {
     selectedExpenseAccounts.value = checkedKeys
-    selectedExpenseAccountLabels.value = checkedKeys.map(id => getNodeLabelById(id, expenseAccountTree.value)).filter(Boolean)
+    selectedExpenseAccountLabels.value = checkedKeys.map(id => {
+      const label = getNodeLabelById(id, expenseAccountTree.value)
+      console.log(`支出账户ID: ${id} 对应标签: ${label}`)
+      return label
+    }).filter(Boolean)
+    
+    console.log(`更新后选中的支出账户数量: ${selectedExpenseAccounts.value.length}`)
+    console.log(`更新后选中的支出账户标签: ${selectedExpenseAccountLabels.value.join(', ')}`)
   } else if (expenseAccountTree.value.length > 0) {
     // 如果没有传递选中的账户，使用默认的选中所有
     const allLeafIds = getAllLeafNodeIds(expenseAccountTree.value)
     selectedExpenseAccounts.value = allLeafIds
     selectedExpenseAccountLabels.value = allLeafIds.map(id => getNodeLabelById(id, expenseAccountTree.value)).filter(Boolean)
+    
+    console.log(`使用默认全选: ${allLeafIds.length}个支出账户叶子节点`)
   }
   
   // 更新图表
   updateTrendChart()
+  console.log('===== 支出账户选择确认完成 =====')
 }
 
 // 根据时间范围、尺度和选定账户生成模拟数据
@@ -788,6 +608,9 @@ onMounted(() => {
   threeMonthsAgo.setMonth(now.getMonth() - 3)
   dateRange.value = [threeMonthsAgo, now]
   customDateRange.value = [threeMonthsAgo, now]
+  
+  // 获取账户数据
+  fetchAccountTree()
   
   // 初始化时默认选择所有收入和支出账户
   setTimeout(() => {
