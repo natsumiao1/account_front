@@ -28,7 +28,7 @@
                 show-checkbox
                 node-key="id"
                 :check-strictly="false"
-                default-expand-all
+                :default-expand-all="false"
                 @check-change="handleIncomeCheckChange"
                 ref="incomeTreeRef"
                 style="width: 100%;"
@@ -66,7 +66,7 @@
                 show-checkbox
                 node-key="id"
                 :check-strictly="false"
-                default-expand-all
+                :default-expand-all="false"
                 @check-change="handleExpenseCheckChange"
                 ref="expenseTreeRef"
                 style="width: 100%;"
