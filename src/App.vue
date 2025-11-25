@@ -167,7 +167,7 @@ const incomeAccountPopoverVisible = ref(false)
 
 // 筛选相关数据
 const dateRange = ref([])
-import { accountApi } from './utils/api'
+import accountApi from './utils/api/accountApi.js'
 
 const transactionTypeFilter = ref('all')
 const categoryFilter = ref('all')
@@ -237,9 +237,10 @@ let trendChart = null
 let categoryChart = null
 
 // 组件挂载时获取账户数据
-onMounted(() => {
-  fetchAccountTree()
-  })
+onMounted(async () => {
+  await fetchAccountTree();
+  await initCharts();
+})
 
 // 筛选函数
 const applyFilters = () => {
@@ -472,37 +473,115 @@ const generateTrendData = () => {
   return { labels, incomeData, expenseData }
 }
 
+// 根据后端API数据生成图表数据格式
+const transformToChartFormat = (incomeData, expenseData) => {
+  // 获取所有唯一的日期
+  const allDates = [...new Set([
+    ...incomeData.map(item => item.date),
+    ...expenseData.map(item => item.date)
+  ])].sort();
+  
+  // 创建标签和对应的数据数组
+  const labels = allDates;
+  const incomeChartData = allDates.map(date => {
+    const item = incomeData.find(i => i.date === date);
+    return item ? item.amount : 0;
+  });
+  const expenseChartData = allDates.map(date => {
+    const item = expenseData.find(i => i.date === date);
+    return item ? item.amount : 0;
+  });
+  
+  return {
+    labels,
+    incomeData: incomeChartData,
+    expenseData: expenseChartData
+  };
+}
+
 // 更新趋势图表
-const updateTrendChart = () => {
+const updateTrendChart = async () => {
   if (!trendChart) return
   
-  const { labels, incomeData, expenseData } = generateTrendData()
-  
-  trendChart.setOption({
-    xAxis: {
-      data: labels
-    },
-    series: [
-      {
-        name: '收入',
-        data: incomeData
+  try {
+    // 准备请求参数
+    const currentDate = new Date();
+    const params = {
+      accountIds: [...selectedIncomeAccounts.value, ...selectedExpenseAccounts.value],
+      startDate: '2000-01-01', // 可以根据实际需求调整时间范围
+      endDate: `${currentDate.getFullYear() + 1}-01-01`,
+      groupBy: 'MONTH', // 可以根据timeScale进行调整
+      transactionType: 'ALL' // 获取所有类型的数据
+    };
+    
+    // 获取后端数据
+    const [incomeStats, expenseStats] = await Promise.all([
+      // 获取收入数据
+      accountApi.getAccountStatistics({
+        ...params,
+        accountIds: selectedIncomeAccounts.value,
+        transactionType: 'INCOME'
+      }),
+      // 获取支出数据
+      accountApi.getAccountStatistics({
+        ...params,
+        accountIds: selectedExpenseAccounts.value,
+        transactionType: 'EXPENSE'
+      })
+    ]);
+    
+    // 转换数据格式
+    const chartData = transformToChartFormat(incomeStats, expenseStats);
+    
+    // 更新图表
+    trendChart.setOption({
+      xAxis: {
+        data: chartData.labels
       },
-      {
-        name: '支出',
-        data: expenseData
-      }
-    ]
-  })
+      series: [
+        {
+          name: '收入',
+          data: chartData.incomeData
+        },
+        {
+          name: '支出',
+          data: chartData.expenseData
+        }
+      ]
+    });
+  } catch (error) {
+    console.error('更新趋势图表失败:', error);
+    
+    // 如果API调用失败，回退到模拟数据
+    console.log('使用模拟数据更新图表');
+    const { labels, incomeData, expenseData } = generateTrendData();
+    
+    trendChart.setOption({
+      xAxis: {
+        data: labels
+      },
+      series: [
+        {
+          name: '收入',
+          data: incomeData
+        },
+        {
+          name: '支出',
+          data: expenseData
+        }
+      ]
+    });
+  }
 }
 
 // 初始化图表
-const initCharts = () => {
+const initCharts = async () => {
   // 初始化趋势图
   if (trendChartRef.value) {
     trendChart = echarts.init(trendChartRef.value)
-    const { labels, incomeData, expenseData } = generateTrendData()
     
-    const trendOption = {
+    // 使用默认配置先初始化图表
+    const defaultOption = {
       tooltip: {
         trigger: 'axis',
         axisPointer: {
@@ -524,7 +603,7 @@ const initCharts = () => {
       xAxis: {
         type: 'category',
         boundaryGap: false,
-        data: labels
+        data: []
       },
       yAxis: {
         type: 'value'
@@ -538,7 +617,7 @@ const initCharts = () => {
           emphasis: {
             focus: 'series'
           },
-          data: incomeData,
+          data: [],
           lineStyle: {
             color: '#67C23A'
           }
@@ -551,14 +630,19 @@ const initCharts = () => {
           emphasis: {
             focus: 'series'
           },
-          data: expenseData,
+          data: [],
           lineStyle: {
             color: '#F56C6C'
           }
         }
       ]
     }
-    trendChart.setOption(trendOption)
+    
+    // 设置默认配置
+    trendChart.setOption(defaultOption);
+    
+    // 异步加载数据并更新图表
+    await updateTrendChart();
   }
 
   // 初始化分类饼图

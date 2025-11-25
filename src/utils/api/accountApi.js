@@ -1,5 +1,35 @@
 // 账户相关API模块
-import { get } from './request.js';
+import { get, post } from './request.js';
+
+/**
+ * 获取账户统计数据
+ * @param {Object} params - 统计参数
+ * @param {Array} params.accountIds - 账户ID数组
+ * @param {string} params.startDate - 开始日期 (YYYY-MM-DD)
+ * @param {string} params.endDate - 结束日期 (YYYY-MM-DD)
+ * @param {string} params.groupBy - 分组方式 (MONTH, DAY, YEAR等)
+ * @param {string} params.transactionType - 交易类型 (EXPENSE或INCOME)
+ * @returns {Promise<Array>} 统计数据数组
+ */
+export async function getAccountStatistics(params) {
+  try {
+    console.log('开始获取账户统计数据:', params);
+    const response = await post('/account/statistics', params);
+    
+    console.log('统计API返回数据:', JSON.stringify(response, null, 2));
+    
+    // 确保返回的数据是数组格式
+    const data = response && response.data && Array.isArray(response.data) 
+      ? response.data 
+      : [];
+      
+    console.log('处理后的统计数据:', data);
+    return data;
+  } catch (error) {
+    console.error('获取账户统计数据失败:', error);
+    return [];
+  }
+}
 
 /**
  * 获取账户树数据
@@ -162,5 +192,6 @@ export function classifyAccounts(accounts) {
 
 // 导出所有API函数
 export default {
-  fetchAccountTree
+  fetchAccountTree,
+  getAccountStatistics
 };
